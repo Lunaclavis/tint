@@ -20,7 +20,7 @@ import (
 
 func Example() {
 	w := os.Stderr
-	logger := slog.New(tint.NewTextHandler(w, &tint.Options{
+	logger := slog.New(tint.NewTextHandler(w, &tint.HandlerOptions{
 		Level:      slog.LevelDebug,
 		TimeFormat: time.Kitchen,
 	}))
@@ -34,7 +34,7 @@ func Example() {
 // Create a new logger that writes all errors in red:
 func Example_redErrors() {
 	w := os.Stderr
-	logger := slog.New(tint.NewTextHandler(w, &tint.Options{
+	logger := slog.New(tint.NewTextHandler(w, &tint.HandlerOptions{
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Value.Kind() == slog.KindAny {
 				if _, ok := a.Value.Any().(error); ok {
@@ -53,7 +53,7 @@ func Example_traceLevel() {
 	const LevelTrace = slog.LevelDebug - 4
 
 	w := os.Stderr
-	logger := slog.New(tint.NewTextHandler(w, &tint.Options{
+	logger := slog.New(tint.NewTextHandler(w, &tint.HandlerOptions{
 		Level: LevelTrace,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.LevelKey && len(groups) == 0 {
@@ -73,7 +73,7 @@ var (
 	faketime = time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
 
 	handlerTests = []struct {
-		Opts *tint.Options
+		Opts *tint.HandlerOptions
 		F    func(l *slog.Logger)
 		Want string
 	}{
@@ -126,7 +126,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF test slice="[a b c]" map="map[a:1 b:2 c:3]"`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				AddSource: true,
 				NoColor:   true,
 			},
@@ -136,7 +136,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF tint/handler_test.go:134 test key=val`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				TimeFormat: time.Kitchen,
 				NoColor:    true,
 			},
@@ -146,7 +146,7 @@ var (
 			Want: `11:00PM INF test key=val`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: drop(slog.TimeKey),
 				NoColor:     true,
 			},
@@ -156,7 +156,7 @@ var (
 			Want: `INF test key=val`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: drop(slog.LevelKey),
 				NoColor:     true,
 			},
@@ -166,7 +166,7 @@ var (
 			Want: `Nov 10 23:00:00.000 test key=val`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: drop(slog.MessageKey),
 				NoColor:     true,
 			},
@@ -176,7 +176,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF key=val`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: drop(slog.TimeKey, slog.LevelKey, slog.MessageKey),
 				NoColor:     true,
 			},
@@ -186,7 +186,7 @@ var (
 			Want: `key=val`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: drop("key"),
 				NoColor:     true,
 			},
@@ -196,7 +196,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF test`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: drop("key"),
 				NoColor:     true,
 			},
@@ -206,7 +206,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF test group.key=val group.key2=val2`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 					if a.Key == "key" && len(groups) == 1 && groups[0] == "group" {
 						return slog.Attr{}
@@ -221,7 +221,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF test group.key2=val2`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: replace(slog.IntValue(42), slog.TimeKey),
 				NoColor:     true,
 			},
@@ -231,7 +231,7 @@ var (
 			Want: `42 INF test key=val`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: replace(slog.StringValue("INFO"), slog.LevelKey),
 				NoColor:     true,
 			},
@@ -241,7 +241,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INFO test key=val`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: replace(slog.IntValue(42), slog.MessageKey),
 				NoColor:     true,
 			},
@@ -251,7 +251,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF 42 key=val`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: replace(slog.IntValue(42), "key"),
 				NoColor:     true,
 			},
@@ -261,7 +261,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF test key=42 key2=val2`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 					return slog.Attr{}
 				},
@@ -291,7 +291,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF test ""=""`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				TimeFormat: time.DateOnly,
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 					if len(groups) == 0 && a.Key == slog.TimeKey {
@@ -313,14 +313,14 @@ var (
 			Want: `Nov 10 23:00:00.000 INF test lvl=WARN`,
 		},
 		{
-			Opts: &tint.Options{NoColor: false},
+			Opts: &tint.HandlerOptions{NoColor: false},
 			F: func(l *slog.Logger) {
 				l.Info("test", "lvl", slog.LevelWarn)
 			},
 			Want: "\033[2mNov 10 23:00:00.000\033[0m \033[92mINF\033[0m test \033[2mlvl=\033[0mWARN",
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 					return tint.Attr(13, a)
 				},
@@ -331,28 +331,28 @@ var (
 			Want: "\033[2;95mNov 10 23:00:00.000\033[0m \033[95mINF\033[0m \033[95mtest\033[0m",
 		},
 		{
-			Opts: &tint.Options{NoColor: false},
+			Opts: &tint.HandlerOptions{NoColor: false},
 			F: func(l *slog.Logger) {
 				l.Error("test", tint.Err(errors.New("fail")))
 			},
 			Want: "\033[2mNov 10 23:00:00.000\033[0m \033[91mERR\033[0m test \033[2;91merr=\033[22mfail\033[0m",
 		},
 		{
-			Opts: &tint.Options{NoColor: false},
+			Opts: &tint.HandlerOptions{NoColor: false},
 			F: func(l *slog.Logger) {
 				l.Info("test", tint.Attr(10, slog.String("key", "value")))
 			},
 			Want: "\033[2mNov 10 23:00:00.000\033[0m \033[92mINF\033[0m test \033[2;92mkey=\033[22mvalue\033[0m",
 		},
 		{
-			Opts: &tint.Options{NoColor: false},
+			Opts: &tint.HandlerOptions{NoColor: false},
 			F: func(l *slog.Logger) {
 				l.Info("test", tint.Attr(226, slog.String("key", "value")))
 			},
 			Want: "\033[2mNov 10 23:00:00.000\033[0m \033[92mINF\033[0m test \033[2;38;5;226mkey=\033[22mvalue\033[0m",
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				NoColor: false,
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 					if a.Key == slog.MessageKey && len(groups) == 0 {
@@ -367,7 +367,7 @@ var (
 			Want: "\033[2mNov 10 23:00:00.000\033[0m \033[92mINF\033[0m \033[92mtest\033[0m \033[2mkey=\033[0mvalue",
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				NoColor: false,
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 					if a.Key == slog.TimeKey && len(groups) == 0 {
@@ -382,7 +382,7 @@ var (
 			Want: "\033[2;92mNov 10 23:00:00.000\033[0m \033[92mINF\033[0m test \033[2mkey=\033[0mvalue",
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				NoColor: false,
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 					if a.Key == slog.TimeKey && len(groups) == 0 {
@@ -397,7 +397,7 @@ var (
 			Want: "\033[2;92mNov 10 23:00:00.000\033[0m \033[92mINF\033[0m test \033[2mkey=\033[0mvalue",
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				AddSource: true,
 				NoColor:   false,
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
@@ -413,7 +413,7 @@ var (
 			Want: "\033[2mNov 10 23:00:00.000\033[0m \033[92mINF\033[0m \033[2;92mtint/handler_test.go:411\033[0m test",
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				NoColor: false,
 				Level:   slog.LevelDebug - 4,
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
@@ -433,7 +433,7 @@ var (
 			Want: "\033[2mNov 10 23:00:00.000\033[0m TRC test",
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				NoColor: false,
 				Level:   slog.LevelDebug - 4,
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
@@ -460,7 +460,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF+1 test`,
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				Level:   slog.LevelDebug - 1,
 				NoColor: true,
 			},
@@ -482,7 +482,7 @@ var (
 			Want: `Nov 10 23:00:00.000 ERR test err=<nil>`,
 		},
 		{ // https://github.com/lmittmann/tint/pull/26
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 					if a.Key == slog.TimeKey && len(groups) == 0 {
 						return slog.Time(slog.TimeKey, a.Value.Time().Add(24*time.Hour))
@@ -504,7 +504,7 @@ var (
 		},
 		{ // https://github.com/lmittmann/tint/pull/30
 			// drop built-in attributes in a grouped log
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: drop(slog.TimeKey, slog.LevelKey, slog.MessageKey, slog.SourceKey),
 				AddSource:   true,
 				NoColor:     true,
@@ -515,7 +515,7 @@ var (
 			Want: `group.key=val`,
 		},
 		{ // https://github.com/lmittmann/tint/issues/36
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				ReplaceAttr: func(g []string, a slog.Attr) slog.Attr {
 					if len(g) == 0 && a.Key == slog.LevelKey {
 						_ = a.Value.Any().(slog.Level)
@@ -530,7 +530,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF test`,
 		},
 		{ // https://github.com/lmittmann/tint/issues/37
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				AddSource: true,
 				ReplaceAttr: func(g []string, a slog.Attr) slog.Attr {
 					return a
@@ -559,28 +559,28 @@ var (
 			Want: `Nov 10 23:00:00.000 INF test key="{A:123 B:<nil>}"`,
 		},
 		{ // https://github.com/lmittmann/tint/issues/59
-			Opts: &tint.Options{NoColor: false},
+			Opts: &tint.HandlerOptions{NoColor: false},
 			F: func(l *slog.Logger) {
 				l.Info("test", "color", "\033[92mgreen\033[0m")
 			},
 			Want: "\033[2mNov 10 23:00:00.000\033[0m \033[92mINF\033[0m test \033[2mcolor=\033[0m\033[92mgreen\033[0m",
 		},
 		{
-			Opts: &tint.Options{NoColor: false},
+			Opts: &tint.HandlerOptions{NoColor: false},
 			F: func(l *slog.Logger) {
 				l.Info("test", "color", "\033[92mgreen quoted\033[0m")
 			},
 			Want: "\033[2mNov 10 23:00:00.000\033[0m \033[92mINF\033[0m test \033[2mcolor=\033[0m\"\033[92mgreen quoted\033[0m\"",
 		},
 		{
-			Opts: &tint.Options{NoColor: true},
+			Opts: &tint.HandlerOptions{NoColor: true},
 			F: func(l *slog.Logger) {
 				l.Info("test", "color", "\033[92mgreen\033[0m")
 			},
 			Want: `Nov 10 23:00:00.000 INF test color=green`,
 		},
 		{
-			Opts: &tint.Options{NoColor: true},
+			Opts: &tint.HandlerOptions{NoColor: true},
 			F: func(l *slog.Logger) {
 				l.Info("test", "color", "\033[92mgreen quoted\033[0m")
 			},
@@ -608,7 +608,7 @@ var (
 			Want: `Nov 10 23:00:00.000 INF test time=2022-05-01T00:00:00.000Z`,
 		},
 		{ // https://github.com/lmittmann/tint/pull/96
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				NoColor: false,
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 					return a
@@ -620,7 +620,7 @@ var (
 			Want: "\033[2mNov 10 23:00:00.000\033[0m \033[92mINF\033[0m test \033[2;92mkey=\033[22mval\033[0m",
 		},
 		{
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				NoColor: false,
 				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 					return tint.Attr(13, a)
@@ -632,7 +632,7 @@ var (
 			Want: "\033[2;95mNov 10 23:00:00.000\033[0m \033[95mINF\033[0m \033[95mtest\033[0m \033[2;95mkey=\033[22mval\033[0m",
 		},
 		{ // https://github.com/lmittmann/tint/issues/100
-			Opts: &tint.Options{
+			Opts: &tint.HandlerOptions{
 				NoColor:   false,
 				Level:     slog.LevelDebug,
 				AddSource: true,
@@ -651,7 +651,7 @@ var (
 			Want: "\033[2mNov 10 23:00:00.000\033[0m \033[95mDBG\033[0m \033[2mtint/handler_test.go:649\033[0m test",
 		},
 		{ // https://github.com/lmittmann/tint/pull/103
-			Opts: &tint.Options{NoColor: true},
+			Opts: &tint.HandlerOptions{NoColor: true},
 			F: func(l *slog.Logger) {
 				l.Info("test", "key", json.RawMessage(`{"k":"v"}`))
 			},
@@ -669,7 +669,7 @@ func TestHandler(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var buf bytes.Buffer
 			if test.Opts == nil {
-				test.Opts = &tint.Options{NoColor: true}
+				test.Opts = &tint.HandlerOptions{NoColor: true}
 			}
 			l := slog.New(tint.NewTextHandler(&buf, test.Opts))
 			test.F(l)
@@ -760,7 +760,7 @@ func TestHandler_Consistency(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			// log with tint.Handler
 			var tintBuf bytes.Buffer
-			tintLogger := slog.New(tint.NewTextHandler(&tintBuf, &tint.Options{
+			tintLogger := slog.New(tint.NewTextHandler(&tintBuf, &tint.HandlerOptions{
 				NoColor:     true,
 				ReplaceAttr: rep,
 			}))
@@ -813,7 +813,7 @@ func TestReplaceAttr(t *testing.T) {
 			slogLogger.Log(context.TODO(), slog.LevelInfo, "", test...)
 
 			tintRecord := make([]replaceAttrParams, 0)
-			tintLogger := slog.New(tint.NewTextHandler(io.Discard, &tint.Options{
+			tintLogger := slog.New(tint.NewTextHandler(io.Discard, &tint.HandlerOptions{
 				ReplaceAttr: replaceAttrRecorder(&tintRecord),
 			}))
 			tintLogger.Log(context.TODO(), slog.LevelInfo, "", test...)
@@ -865,7 +865,7 @@ func TestClonedHandlersSynchronizeWriter(t *testing.T) {
 		logger.Info("test")
 	}
 
-	logger := slog.New(tint.NewTextHandler(&bytes.Buffer{}, &tint.Options{}))
+	logger := slog.New(tint.NewTextHandler(&bytes.Buffer{}, &tint.HandlerOptions{}))
 
 	// start and wait for two goroutines
 	var wg sync.WaitGroup

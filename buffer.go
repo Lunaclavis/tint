@@ -4,7 +4,7 @@ import "sync"
 
 type buffer []byte
 
-var bufPool = sync.Pool{
+var bufferPool = sync.Pool{
 	New: func() any {
 		b := make(buffer, 0, 1024)
 		return (*buffer)(&b)
@@ -12,7 +12,7 @@ var bufPool = sync.Pool{
 }
 
 func newBuffer() *buffer {
-	return bufPool.Get().(*buffer)
+	return bufferPool.Get().(*buffer)
 }
 
 func (b *buffer) Free() {
@@ -20,7 +20,7 @@ func (b *buffer) Free() {
 	const maxBufferSize = 16 << 10
 	if cap(*b) <= maxBufferSize {
 		*b = (*b)[:0]
-		bufPool.Put(b)
+		bufferPool.Put(b)
 	}
 }
 
