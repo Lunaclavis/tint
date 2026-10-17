@@ -8,8 +8,8 @@ replacement for [slog.HandlerOptions].
 
 # Customize Attributes
 
-Options.ReplaceAttr can be used to alter or drop attributes. If set, it is
-called on each non-group attribute before it is logged.
+Options.ReplaceAttr can be used to alter or drop attributes.
+If set, it is called on each non-group attribute before it is logged.
 See [slog.HandlerOptions] for details.
 
 Create a new logger with a custom TRACE level:
@@ -97,6 +97,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -107,24 +108,25 @@ import (
 
 const (
 	// ANSI modes
-	ansiEsc          = '\u001b'
-	ansiReset        = "\u001b[0m"
-	ansiFaint        = "\u001b[2m"
-	ansiResetFaint   = "\u001b[22m"
-	ansiBrightRed    = "\u001b[91m"
-	ansiBrightGreen  = "\u001b[92m"
-	ansiBrightYellow = "\u001b[93m"
+	ansiEsc          rune   = '\u001b'
+	ansiReset        string = "\u001b[0m"
+	ansiFaint        string = "\u001b[2m"
+	ansiResetFaint   string = "\u001b[22m"
+	ansiBrightRed    string = "\u001b[91m"
+	ansiBrightYellow string = "\u001b[93m"
+	ansiBrightBlue   string = "\u001b[94m"
+	ansiBrightCyan   string = "\u001b[96m"
 
-	errKey = "err"
+	errKey string = "err"
 
-	defaultLevel      = slog.LevelInfo
-	defaultTimeFormat = time.StampMilli
+	defaultLevel slog.Level = slog.LevelInfo
+	// defaultTimeFormat string = time.StampMilli
 
 	noColor int16 = -1
 )
 
-// Options for a slog.Handler that writes tinted logs. A zero Options consists
-// entirely of default values.
+// Options for a slog.Handler that writes tinted logs.
+// A zero Options consists entirely of default values.
 //
 // Options can be used as a drop-in replacement for [slog.HandlerOptions].
 type Options struct {
@@ -138,49 +140,15 @@ type Options struct {
 	// See https://pkg.go.dev/log/slog#HandlerOptions for details.
 	ReplaceAttr func(groups []string, attr slog.Attr) slog.Attr
 
-	// Time format (Default: time.StampMilli)
+	// Time format (Default: RFC3339 format with milliseconds)
 	TimeFormat string
 
 	// Disable color (Default: false)
 	NoColor bool
 }
 
-func (o *Options) setDefaults() {
-	if o.Level == nil {
-		o.Level = defaultLevel
-	}
-	if o.TimeFormat == "" {
-		o.TimeFormat = defaultTimeFormat
-	}
-}
-
-// NewTextHandler creates a [slog.Handler] that writes tinted logs to Writer w,
-// using the default options. If opts is nil, the default options are used.
-func NewTextHandler(w io.Writer, opts *Options) slog.Handler {
-	if opts == nil {
-		opts = &Options{}
-	}
-	opts.setDefaults()
-
-	return &handler{
-		mu:   &sync.Mutex{},
-		w:    w,
-		opts: *opts,
-	}
-}
-
-// NewHandler creates a [slog.Handler] that writes tinted logs to Writer w,
-// using the default options. If opts is nil, the default options are used.
-//
-// Deprecated: Use [NewTextHandler] instead.
-//
-//go:fix inline
-func NewHandler(w io.Writer, opts *Options) slog.Handler {
-	return NewTextHandler(w, opts)
-}
-
-// handler implements a [slog.Handler].
-type handler struct {
+// textHandler implements a [slog.Handler].
+type textHandler struct {
 	attrsPrefix string
 	groupPrefix string
 	groups      []string
@@ -191,25 +159,46 @@ type handler struct {
 	opts Options
 }
 
-func (h *handler) clone() *handler {
-	return &handler{
+// NewTextHandler creates a [slog.Handler] that writes tinted logs to Writer w,
+// using the default options. If opts is nil, the default options are used.
+func NewTextHandler(w io.Writer, opts *Options) slog.Handler {
+	var o Options
+	if opts != nil {
+		o = *opts
+	}
+	if o.Level == nil {
+		o.Level = defaultLevel
+	}
+	// if o.TimeFormat == "" {
+	// 	o.TimeFormat = defaultTimeFormat
+	// }
+
+	return &textHandler{
+		mu:   &sync.Mutex{},
+		w:    w,
+		opts: o,
+	}
+}
+
+func (h *textHandler) clone() *textHandler {
+	return &textHandler{
 		attrsPrefix: h.attrsPrefix,
 		groupPrefix: h.groupPrefix,
-		groups:      h.groups,
+		groups:      slices.Clip(h.groups),
 		mu:          h.mu, // mutex shared among all clones of this handler
 		w:           h.w,
 		opts:        h.opts,
 	}
 }
 
-func (h *handler) Enabled(_ context.Context, level slog.Level) bool {
+func (h *textHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.opts.Level.Level()
 }
 
-func (h *handler) Handle(_ context.Context, r slog.Record) error {
+func (h *textHandler) Handle(_ context.Context, r slog.Record) error {
 	// get a buffer from the sync pool
 	buf := newBuffer()
-	defer buf.Free()
+	defer buf.Release()
 
 	rep := h.opts.ReplaceAttr
 
@@ -220,7 +209,7 @@ func (h *handler) Handle(_ context.Context, r slog.Record) error {
 			buf.WriteByte(' ')
 		} else {
 			val := r.Time.Round(0) // strip monotonic to match Attr behavior
-			if a := rep(nil /* groups */, slog.Time(slog.TimeKey, val)); a.Key != "" {
+			if a := rep(nil, slog.Time(slog.TimeKey, val)); a.Key != "" {
 				val, color := h.resolve(a.Value, noColor)
 				if val.Kind() == slog.KindTime {
 					h.appendTintTime(buf, val.Time(), color)
@@ -236,7 +225,7 @@ func (h *handler) Handle(_ context.Context, r slog.Record) error {
 	if rep == nil {
 		h.appendTintLevel(buf, r.Level, noColor)
 		buf.WriteByte(' ')
-	} else if a := rep(nil /* groups */, slog.Any(slog.LevelKey, r.Level)); a.Key != "" {
+	} else if a := rep(nil, slog.Any(slog.LevelKey, r.Level)); a.Key != "" {
 		val, color := h.resolve(a.Value, noColor)
 		if val.Kind() == slog.KindAny {
 			if lvlVal, ok := val.Any().(slog.Level); ok {
@@ -270,7 +259,7 @@ func (h *handler) Handle(_ context.Context, r slog.Record) error {
 					buf.WriteString(ansiReset)
 				}
 				buf.WriteByte(' ')
-			} else if a := rep(nil /* groups */, slog.Any(slog.SourceKey, src)); a.Key != "" {
+			} else if a := rep(nil, slog.Any(slog.SourceKey, src)); a.Key != "" {
 				val, color := h.resolve(a.Value, noColor)
 				h.appendTintValue(buf, val, false, color, true)
 				buf.WriteByte(' ')
@@ -282,7 +271,7 @@ func (h *handler) Handle(_ context.Context, r slog.Record) error {
 	if rep == nil {
 		buf.WriteString(r.Message)
 		buf.WriteByte(' ')
-	} else if a := rep(nil /* groups */, slog.String(slog.MessageKey, r.Message)); a.Key != "" {
+	} else if a := rep(nil, slog.String(slog.MessageKey, r.Message)); a.Key != "" {
 		val, color := h.resolve(a.Value, noColor)
 		h.appendTintValue(buf, val, false, color, false)
 		buf.WriteByte(' ')
@@ -294,8 +283,9 @@ func (h *handler) Handle(_ context.Context, r slog.Record) error {
 	}
 
 	// write attributes
+	groups := slices.Clip(h.groups)
 	r.Attrs(func(attr slog.Attr) bool {
-		h.appendAttr(buf, attr, h.groupPrefix, h.groups, noColor)
+		h.appendAttr(buf, attr, h.groupPrefix, groups, noColor)
 		return true
 	})
 
@@ -312,52 +302,64 @@ func (h *handler) Handle(_ context.Context, r slog.Record) error {
 	return err
 }
 
-func (h *handler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (h *textHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	if len(attrs) == 0 {
 		return h
 	}
-	h2 := h.clone()
+	handler := h.clone()
 
 	buf := newBuffer()
-	defer buf.Free()
+	defer buf.Release()
 
 	// write attributes to buffer
+	groups := slices.Clip(h.groups)
 	for _, attr := range attrs {
-		h.appendAttr(buf, attr, h.groupPrefix, h.groups, noColor)
+		h.appendAttr(buf, attr, h.groupPrefix, groups, noColor)
 	}
-	h2.attrsPrefix = h.attrsPrefix + string(*buf)
-	return h2
+	handler.attrsPrefix = h.attrsPrefix + string(*buf)
+	return handler
 }
 
-func (h *handler) WithGroup(name string) slog.Handler {
+func (h *textHandler) WithGroup(name string) slog.Handler {
 	if name == "" {
 		return h
 	}
-	h2 := h.clone()
-	h2.groupPrefix += name + "."
-	h2.groups = append(h2.groups, name)
-	return h2
+	handler := h.clone()
+	handler.groupPrefix += name + "."
+	handler.groups = append(handler.groups, name)
+	return handler
 }
 
-func (h *handler) appendTintTime(buf *buffer, t time.Time, color int16) {
+func (h *textHandler) appendTintTime(buf *buffer, t time.Time, color int16) {
 	if h.opts.NoColor {
-		*buf = t.AppendFormat(*buf, h.opts.TimeFormat)
+		h.appendTime(buf, t)
+		return
+	}
+
+	switch {
+	case color < 0:
+		buf.WriteString(ansiFaint)
+	default:
+		appendAnsi(buf, uint8(color), true)
+	}
+	h.appendTime(buf, t)
+	buf.WriteString(ansiReset)
+}
+
+func (h *textHandler) appendTime(buf *buffer, t time.Time) {
+	if h.opts.TimeFormat == "" {
+		*buf = appendRFC3339Millis(*buf, t)
 	} else {
-		if color >= 0 {
-			appendAnsi(buf, uint8(color), true)
-		} else {
-			buf.WriteString(ansiFaint)
-		}
 		*buf = t.AppendFormat(*buf, h.opts.TimeFormat)
-		buf.WriteString(ansiReset)
 	}
 }
 
-func (h *handler) appendTintLevel(buf *buffer, level slog.Level, color int16) {
-	str := func(base string, val slog.Level) []byte {
+func (h *textHandler) appendTintLevel(buf *buffer, level slog.Level, color int16) {
+	toBytes := func(base string, val slog.Level) []byte {
 		if val == 0 {
 			return []byte(base)
-		} else if val > 0 {
+		}
+		if val > 0 {
 			return strconv.AppendInt(append([]byte(base), '+'), int64(val), 10)
 		}
 		return strconv.AppendInt([]byte(base), int64(val), 10)
@@ -369,8 +371,9 @@ func (h *handler) appendTintLevel(buf *buffer, level slog.Level, color int16) {
 		} else {
 			switch {
 			case level < slog.LevelInfo:
+				buf.WriteString(ansiBrightBlue)
 			case level < slog.LevelWarn:
-				buf.WriteString(ansiBrightGreen)
+				buf.WriteString(ansiBrightCyan)
 			case level < slog.LevelError:
 				buf.WriteString(ansiBrightYellow)
 			default:
@@ -381,16 +384,16 @@ func (h *handler) appendTintLevel(buf *buffer, level slog.Level, color int16) {
 
 	switch {
 	case level < slog.LevelInfo:
-		buf.Write(str("DBG", level-slog.LevelDebug))
+		buf.Write(toBytes("DBG", level-slog.LevelDebug))
 	case level < slog.LevelWarn:
-		buf.Write(str("INF", level-slog.LevelInfo))
+		buf.Write(toBytes("INF", level-slog.LevelInfo))
 	case level < slog.LevelError:
-		buf.Write(str("WRN", level-slog.LevelWarn))
+		buf.Write(toBytes("WRN", level-slog.LevelWarn))
 	default:
-		buf.Write(str("ERR", level-slog.LevelError))
+		buf.Write(toBytes("ERR", level-slog.LevelError))
 	}
 
-	if !h.opts.NoColor && (color >= 0 || level >= slog.LevelInfo) {
+	if !h.opts.NoColor {
 		buf.WriteString(ansiReset)
 	}
 }
@@ -403,7 +406,7 @@ func appendSource(buf *buffer, src *slog.Source) {
 	*buf = strconv.AppendInt(*buf, int64(src.Line), 10)
 }
 
-func (h *handler) resolve(val slog.Value, inheritedColor int16) (resolvedVal slog.Value, color int16) {
+func (h *textHandler) resolve(val slog.Value, inheritedColor int16) (resolvedVal slog.Value, color int16) {
 	if !h.opts.NoColor && val.Kind() == slog.KindLogValuer {
 		if tintVal, ok := val.Any().(tintValue); ok {
 			return tintVal.Value.Resolve(), int16(tintVal.Color)
@@ -412,9 +415,10 @@ func (h *handler) resolve(val slog.Value, inheritedColor int16) (resolvedVal slo
 	return val.Resolve(), inheritedColor
 }
 
-func (h *handler) appendAttr(buf *buffer, attr slog.Attr, groupsPrefix string, groups []string, color int16) {
+func (h *textHandler) appendAttr(buf *buffer, attr slog.Attr, groupsPrefix string, groups []string, color int16) {
 	attr.Value, color = h.resolve(attr.Value, color)
-	if rep := h.opts.ReplaceAttr; rep != nil && attr.Value.Kind() != slog.KindGroup {
+	rep := h.opts.ReplaceAttr
+	if rep != nil && attr.Value.Kind() != slog.KindGroup {
 		attr = rep(groups, attr)
 		attr.Value, color = h.resolve(attr.Value, color)
 	}
@@ -426,7 +430,9 @@ func (h *handler) appendAttr(buf *buffer, attr slog.Attr, groupsPrefix string, g
 	if attr.Value.Kind() == slog.KindGroup {
 		if attr.Key != "" {
 			groupsPrefix += attr.Key + "."
-			groups = append(groups, attr.Key)
+			if rep != nil {
+				groups = append(groups, attr.Key)
+			}
 		}
 		for _, groupAttr := range attr.Value.Group() {
 			h.appendAttr(buf, groupAttr, groupsPrefix, groups, color)
@@ -454,12 +460,12 @@ func (h *handler) appendAttr(buf *buffer, attr slog.Attr, groupsPrefix string, g
 	buf.WriteByte(' ')
 }
 
-func (h *handler) appendKey(buf *buffer, key, groups string) {
+func (h *textHandler) appendKey(buf *buffer, key, groups string) {
 	appendString(buf, groups+key, true, !h.opts.NoColor)
 	buf.WriteByte('=')
 }
 
-func (h *handler) appendValue(buf *buffer, v slog.Value, quote bool) {
+func (h *textHandler) appendValue(buf *buffer, v slog.Value, quote bool) {
 	switch v.Kind() {
 	case slog.KindString:
 		appendString(buf, v.String(), quote, !h.opts.NoColor)
@@ -534,7 +540,7 @@ func byteSlice(a any) ([]byte, bool) {
 	return nil, false
 }
 
-func (h *handler) appendTintValue(buf *buffer, val slog.Value, quote bool, color int16, faint bool) {
+func (h *textHandler) appendTintValue(buf *buffer, val slog.Value, quote bool, color int16, faint bool) {
 	if h.opts.NoColor {
 		h.appendValue(buf, val, quote)
 	} else {
@@ -569,11 +575,12 @@ func appendAnsi(buf *buffer, color uint8, faint bool) {
 	if faint {
 		buf.WriteString("2;")
 	}
-	if color < 8 {
+	switch {
+	case color < 8:
 		*buf = strconv.AppendUint(*buf, uint64(color)+30, 10)
-	} else if color < 16 {
+	case color < 16:
 		*buf = strconv.AppendUint(*buf, uint64(color)+82, 10)
-	} else {
+	default:
 		buf.WriteString("38;5;")
 		*buf = strconv.AppendUint(*buf, uint64(color), 10)
 	}
@@ -583,17 +590,7 @@ func appendAnsi(buf *buffer, color uint8, faint bool) {
 func appendString(buf *buffer, s string, quote, color bool) {
 	if quote && !color {
 		// trim ANSI escape sequences
-		var inEscape bool
-		s = cut(s, func(r rune) bool {
-			if r == ansiEsc {
-				inEscape = true
-			} else if inEscape && unicode.IsLetter(r) {
-				inEscape = false
-				return true
-			}
-
-			return inEscape
-		})
+		s = trimEscape(s)
 	}
 
 	quote = quote && needsQuoting(s)
@@ -609,18 +606,49 @@ func appendString(buf *buffer, s string, quote, color bool) {
 	}
 }
 
-func cut(s string, f func(r rune) bool) string {
-	var res []rune
-	for i := 0; i < len(s); {
+func trimEscape(s string) string {
+	i := 0
+	l := len(s)
+	for i < l {
+		if s[i] == byte(ansiEsc) {
+			break
+		}
+		if s[i] < utf8.RuneSelf {
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError {
+			return s[:i]
+		}
+		i += size
+	}
+	if i == l {
+		return s
+	}
+
+	res := make([]byte, 0, l)
+	res = append(res, s[:i]...)
+
+	var inEscape bool
+	for i < l {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		if r == utf8.RuneError {
 			break
 		}
-		if !f(r) {
-			res = append(res, r)
+		switch {
+		case r == ansiEsc:
+			inEscape = true
+		case inEscape:
+			if unicode.IsLetter(r) {
+				inEscape = false
+			}
+		default:
+			res = append(res, s[i:i+size]...)
 		}
 		i += size
 	}
+
 	return string(res)
 }
 
@@ -762,8 +790,8 @@ func (v tintValue) LogValue() slog.Value {
 	return v.Value
 }
 
-// Err returns a tinted (colorized) [slog.Attr] that will be written in red color
-// by the [tint.Handler]. When used with any other [slog.Handler], it behaves as
+// Err returns a tinted (colorized) [slog.Attr] that will be written in red color.
+// When used with any other [slog.Handler], it behaves as
 //
 //	slog.Any("err", err)
 func Err(err error) slog.Attr {
@@ -771,8 +799,8 @@ func Err(err error) slog.Attr {
 }
 
 // Attr returns a tinted (colorized) [slog.Attr] that will be written in the
-// specified color by the [tint.Handler]. When used with any other [slog.Handler], it behaves as a
-// plain [slog.Attr].
+// specified color.
+// When used with any other [slog.Handler], it behaves as a plain [slog.Attr].
 //
 // Use the uint8 color value to specify the color of the attribute:
 //

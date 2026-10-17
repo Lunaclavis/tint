@@ -2,25 +2,26 @@ package tint
 
 import "sync"
 
+const maxBufferSize = 16 << 10
+
 type buffer []byte
 
-var bufPool = sync.Pool{
+var bufferPool = sync.Pool{
 	New: func() any {
-		b := make(buffer, 0, 1024)
+		b := make(buffer, 0, 1<<10)
 		return (*buffer)(&b)
 	},
 }
 
 func newBuffer() *buffer {
-	return bufPool.Get().(*buffer)
+	return bufferPool.Get().(*buffer)
 }
 
-func (b *buffer) Free() {
+func (b *buffer) Release() {
 	// To reduce peak allocation, return only smaller buffers to the pool.
-	const maxBufferSize = 16 << 10
 	if cap(*b) <= maxBufferSize {
 		*b = (*b)[:0]
-		bufPool.Put(b)
+		bufferPool.Put(b)
 	}
 }
 
